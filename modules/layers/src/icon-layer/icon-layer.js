@@ -24,6 +24,7 @@ const {fp64LowPart} = fp64;
 
 import vs from './icon-layer-vertex.glsl';
 import fs from './icon-layer-fragment.glsl';
+import IconManager from './icon-manager';
 
 const DEFAULT_COLOR = [0, 0, 0, 255];
 const DEFAULT_TEXTURE_MIN_FILTER = GL.LINEAR_MIPMAP_LINEAR;
@@ -55,7 +56,7 @@ const DEFAULT_TEXTURE_MAG_FILTER = GL.LINEAR;
  */
 const defaultProps = {
   iconAtlas: null,
-  iconMapping: {type: 'object', value: {}, async: true},
+  iconMapping: null,
   sizeScale: {type: 'number', value: 1, min: 0},
   fp64: false,
 
@@ -73,8 +74,20 @@ export default class IconLayer extends Layer {
   }
 
   initializeState() {
-    const attributeManager = this.getAttributeManager();
+    // if user provided iconAtlas, do not need `IconManager`
+    if (!this.props.iconAtlas) {
+      const {data, getIcon} = this.props;
+      const {gl} = this.context;
+      const iconManager = new IconManager(gl, {
+        data,
+        getIcon,
+        onTextureUpdate: () => this._onTextureUpdate()
+      });
 
+      this.state = {iconManager};
+    }
+
+    const attributeManager = this.getAttributeManager();
     /* eslint-disable max-len */
     attributeManager.addInstanced({
       instancePositions: {
@@ -118,19 +131,33 @@ export default class IconLayer extends Layer {
     /* eslint-enable max-len */
   }
 
+  _updateIconMapping(iconMapping) {
+    const attributeManager = this.getAttributeManager();
+    attributeManager.invalidate('instanceOffsets');
+    attributeManager.invalidate('instanceIconFrames');
+    attributeManager.invalidate('instanceColorModes');
+    this.setState({iconMapping});
+  }
+
   updateState({oldProps, props, changeFlags}) {
     super.updateState({props, oldProps, changeFlags});
 
     const {iconAtlas, iconMapping} = props;
+    const {iconManager} = this.state;
 
-    if (oldProps.iconMapping !== iconMapping) {
-      const attributeManager = this.getAttributeManager();
-      attributeManager.invalidate('instanceOffsets');
-      attributeManager.invalidate('instanceIconFrames');
-      attributeManager.invalidate('instanceColorModes');
+    if (iconManager && changeFlags.dataChanged) {
+      iconManager.setData(props.data);
+      if (this.state.iconMapping !== iconManager.mapping) {
+        this._updateIconMapping(iconManager.mapping);
+        this.setState({iconsTexture: iconManager.texture});
+      }
     }
 
-    if (oldProps.iconAtlas !== iconAtlas) {
+    if (iconMapping && oldProps.iconMapping !== iconMapping) {
+      this._updateIconMapping(iconMapping);
+    }
+
+    if (iconAtlas && oldProps.iconAtlas !== iconAtlas) {
       if (iconAtlas instanceof Texture2D) {
         iconAtlas.setParameters({
           [GL.TEXTURE_MIN_FILTER]: DEFAULT_TEXTURE_MIN_FILTER,
@@ -194,6 +221,10 @@ export default class IconLayer extends Layer {
     );
   }
 
+  _onTextureUpdate(texture) {
+    this.setNeedsRedraw();
+  }
+
   calculateInstancePositions64xyLow(attribute) {
     const isFP64 = this.use64bitPositions();
     attribute.constant = !isFP64;
@@ -214,11 +245,12 @@ export default class IconLayer extends Layer {
   }
 
   calculateInstanceOffsets(attribute) {
-    const {data, iconMapping, getIcon} = this.props;
+    const {data} = this.props;
+    const {iconMapping} = this.state;
     const {value} = attribute;
     let i = 0;
     for (const object of data) {
-      const icon = getIcon(object);
+      const icon = this._getIconName(object);
       const rect = iconMapping[icon] || {};
       value[i++] = rect.width / 2 - rect.anchorX || 0;
       value[i++] = rect.height / 2 - rect.anchorY || 0;
@@ -226,28 +258,36 @@ export default class IconLayer extends Layer {
   }
 
   calculateInstanceColorMode(attribute) {
-    const {data, iconMapping, getIcon} = this.props;
+    const {data} = this.props;
+    const {iconMapping} = this.state;
     const {value} = attribute;
     let i = 0;
     for (const object of data) {
-      const icon = getIcon(object);
+      const icon = this._getIconName(object);
       const colorMode = iconMapping[icon] && iconMapping[icon].mask;
       value[i++] = colorMode ? 1 : 0;
     }
   }
 
   calculateInstanceIconFrames(attribute) {
-    const {data, iconMapping, getIcon} = this.props;
+    const {data} = this.props;
+    const {iconMapping} = this.state;
     const {value} = attribute;
     let i = 0;
     for (const object of data) {
-      const icon = getIcon(object);
+      const icon = this._getIconName(object);
       const rect = iconMapping[icon] || {};
       value[i++] = rect.x || 0;
       value[i++] = rect.y || 0;
       value[i++] = rect.width || 0;
       value[i++] = rect.height || 0;
     }
+  }
+
+  _getIconName(point) {
+    const {getIcon} = this.props;
+    const icon = getIcon(point);
+    return icon ? (typeof icon === 'object' ? icon.url : icon) : null;
   }
 }
 

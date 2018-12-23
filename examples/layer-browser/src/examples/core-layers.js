@@ -53,15 +53,38 @@ const ArcLayerExample = {
 
 const IconLayerExample = {
   layer: IconLayer,
-  getData: () => dataSamples.points,
+  getData: () => dataSamples.points.slice(2010, 2030),
   props: {
-    iconAtlas: 'data/icon-atlas.png',
+    iconAtlas: 'data/icon-atlas-128.png',
     iconMapping: dataSamples.iconAtlas,
     sizeScale: 24,
     getPosition: d => d.COORDINATES,
     getColor: d => [64, 64, 72],
     getIcon: d => (d.PLACEMENT === 'SW' ? 'marker' : 'marker-warning'),
     getSize: d => (d.RACKS > 2 ? 2 : 1),
+    opacity: 0.8,
+    pickable: true
+  }
+};
+
+const IconLayerDynamicExample = {
+  layer: IconLayer,
+  getData: () => dataSamples.points.slice(2010, 2030),
+  props: {
+    id: 'icon-layer-experimental',
+    sizeScale: 24,
+    getPosition: d => d.COORDINATES,
+    getColor: d => [64, 64, 72],
+    getIcon: d => ({
+      url: d.PLACEMENT === 'SW' ? 'data/icon-marker.png' : 'data/icon-warning.png',
+      width: 128,
+      height: 128,
+      anchorY: 128,
+      mask: false
+    }),
+    getSize: d => {
+      return d.RACKS > 2 ? 2 : 1;
+    },
     opacity: 0.8,
     pickable: true
   }
@@ -389,6 +412,7 @@ export default {
     LineLayer: LineLayerExample,
     LineLayerNewCoords: LineLayerExampleNewCoords,
     IconLayer: IconLayerExample,
+    'IconLayer (Experimental)': IconLayerDynamicExample,
     GridCellLayer: GridCellLayerExample,
     GridLayer: GridLayerExample,
     ScreenGridLayer: ScreenGridLayerExample,
